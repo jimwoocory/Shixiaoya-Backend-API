@@ -1,0 +1,163 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// 产品分类表
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(100)
+  slug        String    @unique @db.VarChar(100)
+  description String?   @db.Text
+  image       String?   @db.VarChar(500)
+  sort        Int       @default(0)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  products    Product[]
+  
+  @@map("categories")
+}
+
+// 产品表
+model Product {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(200)
+  slug        String    @unique @db.VarChar(200)
+  description String?   @db.Text
+  price       Decimal   @db.Decimal(10, 2)
+  originalPrice Decimal? @db.Decimal(10, 2) @map("original_price")
+  images      Json      // 存储图片数组
+  specifications Json?  // 存储规格参数
+  features    Json?     // 存储产品特性
+  categoryId  Int       @map("category_id")
+  isHot       Boolean   @default(false) @map("is_hot")
+  isNew       Boolean   @default(false) @map("is_new")
+  stock       Int       @default(0)
+  sort        Int       @default(0)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  category    Category  @relation(fields: [categoryId], references: [id])
+  inquiries   InquiryProduct[]
+  
+  @@map("products")
+}
+
+// 询价表
+model Inquiry {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(100)
+  phone       String    @db.VarChar(20)
+  email       String?   @db.VarChar(100)
+  company     String?   @db.VarChar(200)
+  message     String    @db.Text
+  status      InquiryStatus @default(PENDING)
+  adminReply  String?   @db.Text @map("admin_reply")
+  repliedAt   DateTime? @map("replied_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  products    InquiryProduct[]
+  
+  @@map("inquiries")
+}
+
+// 询价产品关联表
+model InquiryProduct {
+  id        Int     @id @default(autoincrement())
+  inquiryId Int     @map("inquiry_id")
+  productId Int     @map("product_id")
+  quantity  Int     @default(1)
+  
+  inquiry   Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+  
+  @@unique([inquiryId, productId])
+  @@map("inquiry_products")
+}
+
+// 客户案例表
+model Case {
+  id          Int       @id @default(autoincrement())
+  title       String    @db.VarChar(200)
+  slug        String    @unique @db.VarChar(200)
+  description String    @db.Text
+  location    String    @db.VarChar(200)
+  area        String?   @db.VarChar(100)
+  projectType String    @db.VarChar(100) @map("project_type")
+  images      Json      // 存储图片数组
+  materials   Json?     // 使用的材料
+  clientName  String?   @db.VarChar(100) @map("client_name")
+  completedAt DateTime? @map("completed_at")
+  isActive    Boolean   @default(true) @map("is_active")
+  sort        Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  @@map("cases")
+}
+
+// 用户表
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique @db.VarChar(50)
+  email     String   @unique @db.VarChar(100)
+  password  String   @db.VarChar(255)
+  name      String   @db.VarChar(100)
+  role      UserRole @default(ADMIN)
+  avatar    String?  @db.VarChar(500)
+  isActive  Boolean  @default(true) @map("is_active")
+  lastLogin DateTime? @map("last_login")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("users")
+}
+
+// 系统配置表
+model Setting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(100)
+  value     String   @db.Text
+  type      String   @db.VarChar(50) // string, number, boolean, json
+  group     String   @db.VarChar(50)
+  description String? @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("settings")
+}
+
+// 访问统计表
+model Analytics {
+  id        Int      @id @default(autoincrement())
+  path      String   @db.VarChar(500)
+  userAgent String?  @db.Text @map("user_agent")
+  ip        String   @db.VarChar(45)
+  referer   String?  @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@map("analytics")
+}
+
+// 枚举定义
+enum InquiryStatus {
+  PENDING   // 待处理
+  REPLIED   // 已回复
+  CLOSED    // 已关闭
+}
+
+enum UserRole {
+  ADMIN     // 管理员
+  EDITOR    // 编辑
+}
