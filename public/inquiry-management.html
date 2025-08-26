@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>询价管理系统 - 施小雅板材</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- 头部导航 -->
+        <header class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center">
+                        <h1 class="text-2xl font-bold text-gray-900">询价管理系统</h1>
+                        <span class="ml-4 text-sm text-gray-500">施小雅板材后台管理</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button id="refreshBtn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                            刷新数据
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主要内容 -->
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <!-- 统计卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="p-5">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white text-sm font-bold">总</span>
+                                </div>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">总询价数</dt>
+                                    <dd class="text-lg font-medium text-gray-900" id="totalCount">0</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="p-5">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white text-sm font-bold">待</span>
+                                </div>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">待处理</dt>
+                                    <dd class="text-lg font-medium text-gray-900" id="pendingCount">0</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="p-5">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white text-sm font-bold">处</span>
+                                </div>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">处理中</dt>
+                                    <dd class="text-lg font-medium text-gray-900" id="processingCount">0</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="p-5">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white text-sm font-bold">完</span>
+                                </div>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">已完成</dt>
+                                    <dd class="text-lg font-medium text-gray-900" id="completedCount">0</dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 询价列表 -->
+            <div class="bg-white shadow rounded-lg">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">询价列表</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">询价编号</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">客户信息</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">创建时间</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inquiryTableBody" class="bg-white divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">
+                                    正在加载数据...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // 模拟数据
+        const mockData = [
+            {
+                id: '1',
+                inquiryNumber: 'INQ-2024-001',
+                customerName: '张先生',
+                customerPhone: '13800138000',
+                customerEmail: 'zhang@example.com',
+                status: 'PENDING',
+                priority: 'HIGH',
+                createdAt: new Date().toISOString(),
+                products: [
+                    { name: '多层板', quantity: 100, specifications: '18mm厚度' }
+                ]
+            },
+            {
+                id: '2',
+                inquiryNumber: 'INQ-2024-002',
+                customerName: '李女士',
+                customerPhone: '13900139000',
+                customerEmail: 'li@example.com',
+                status: 'PROCESSING',
+                priority: 'MEDIUM',
+                createdAt: new Date(Date.now() - 86400000).toISOString(),
+                products: [
+                    { name: '胶合板', quantity: 50, specifications: '12mm厚度' }
+                ]
+            }
+        ];
+
+        // 初始化页面
+        document.addEventListener('DOMContentLoaded', function() {
+            loadInquiries();
+            bindEvents();
+        });
+
+        // 绑定事件
+        function bindEvents() {
+            document.getElementById('refreshBtn').addEventListener('click', loadInquiries);
+        }
+
+        // 加载询价数据
+        function loadInquiries() {
+            // 使用模拟数据
+            renderInquiries(mockData);
+            updateStatistics();
+        }
+
+        // 渲染询价列表
+        function renderInquiries(inquiries) {
+            const tbody = document.getElementById('inquiryTableBody');
+            tbody.innerHTML = '';
+
+            inquiries.forEach(inquiry => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        ${inquiry.inquiryNumber}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div>
+                            <div class="font-medium">${inquiry.customerName}</div>
+                            <div class="text-gray-400">${inquiry.customerPhone}</div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(inquiry.status)}">
+                            ${getStatusText(inquiry.status)}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${new Date(inquiry.createdAt).toLocaleString('zh-CN')}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button onclick="viewInquiry('${inquiry.id}')" class="text-blue-600 hover:text-blue-900 mr-3">
+                            查看
+                        </button>
+                        <button onclick="updateInquiryStatus('${inquiry.id}')" class="text-green-600 hover:text-green-900">
+                            更新
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // 更新统计信息
+        function updateStatistics() {
+            const stats = {
+                total: mockData.length,
+                pending: mockData.filter(i => i.status === 'PENDING').length,
+                processing: mockData.filter(i => i.status === 'PROCESSING').length,
+                completed: mockData.filter(i => i.status === 'COMPLETED').length
+            };
+
+            document.getElementById('totalCount').textContent = stats.total;
+            document.getElementById('pendingCount').textContent = stats.pending;
+            document.getElementById('processingCount').textContent = stats.processing;
+            document.getElementById('completedCount').textContent = stats.completed;
+        }
+
+        // 查看询价详情
+        function viewInquiry(inquiryId) {
+            const inquiry = mockData.find(i => i.id === inquiryId);
+            if (inquiry) {
+                alert(`询价详情：\n编号：${inquiry.inquiryNumber}\n客户：${inquiry.customerName}\n状态：${getStatusText(inquiry.status)}`);
+            }
+        }
+
+        // 更新询价状态
+        function updateInquiryStatus(inquiryId) {
+            const newStatus = prompt('请输入新状态 (PENDING/PROCESSING/QUOTED/COMPLETED/CANCELLED):');
+            if (newStatus && ['PENDING', 'PROCESSING', 'QUOTED', 'COMPLETED', 'CANCELLED'].includes(newStatus)) {
+                const inquiry = mockData.find(i => i.id === inquiryId);
+                if (inquiry) {
+                    inquiry.status = newStatus;
+                    loadInquiries();
+                    alert('状态更新成功');
+                }
+            } else if (newStatus) {
+                alert('无效的状态值');
+            }
+        }
+
+        // 获取状态颜色
+        function getStatusColor(status) {
+            const colors = {
+                'PENDING': 'bg-yellow-100 text-yellow-800',
+                'PROCESSING': 'bg-blue-100 text-blue-800',
+                'QUOTED': 'bg-purple-100 text-purple-800',
+                'COMPLETED': 'bg-green-100 text-green-800',
+                'CANCELLED': 'bg-red-100 text-red-800'
+            };
+            return colors[status] || 'bg-gray-100 text-gray-800';
+        }
+
+        // 获取状态文本
+        function getStatusText(status) {
+            const texts = {
+                'PENDING': '待处理',
+                'PROCESSING': '处理中',
+                'QUOTED': '已报价',
+                'COMPLETED': '已完成',
+                'CANCELLED': '已取消'
+            };
+            return texts[status] || status;
+        }
+    </script>
+</body>
+</html>

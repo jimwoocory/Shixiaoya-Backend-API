@@ -1,0 +1,17 @@
+{
+  "inquiries": [
+    {
+      "id": "mesbpwz983tfxa3frr4",
+      "inquiryNumber": "INQ-20250826-300661",
+      "customerName": "????",
+      "customerPhone": "13800138000",
+      "productName": "????",
+      "quantity": 10,
+      "requirements": "??????",
+      "urgency": "NORMAL",
+      "status": "PENDING",
+      "createdAt": "2025-08-26T09:08:20.661Z",
+      "updatedAt": "2025-08-26T09:08:20.661Z"
+    }
+  ]
+}

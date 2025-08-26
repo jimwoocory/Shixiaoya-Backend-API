@@ -7,12 +7,12 @@ import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 
 // 导入路由
-import productRoutes from './routes/products'
-import inquiryRoutes from './routes/inquiries'
-import caseRoutes from './routes/cases'
-import authRoutes from './routes/auth'
-import uploadRoutes from './routes/upload'
-import statsRoutes from './routes/stats'
+// import productRoutes from './routes/products'
+import inquiryRoutes from './routes/inquiries-local'
+// import caseRoutes from './routes/cases'
+// import authRoutes from './routes/auth'
+// import uploadRoutes from './routes/upload'
+// import statsRoutes from './routes/stats'
 
 // 导入中间件
 import { errorHandler } from './middleware/errorHandler'
@@ -59,12 +59,12 @@ app.get('/health', (req, res) => {
 })
 
 // API路由
-app.use('/api/products', productRoutes)
+// app.use('/api/products', productRoutes)
 app.use('/api/inquiries', inquiryRoutes)
-app.use('/api/cases', caseRoutes)
-app.use('/api/auth', authRoutes)
-app.use('/api/upload', uploadRoutes)
-app.use('/api/stats', statsRoutes)
+// app.use('/api/cases', caseRoutes)
+// app.use('/api/auth', authRoutes)
+// app.use('/api/upload', uploadRoutes)
+// app.use('/api/stats', statsRoutes)
 
 // 错误处理中间件
 app.use(notFound)

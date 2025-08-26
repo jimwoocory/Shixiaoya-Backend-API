@@ -1,10 +1,77 @@
 import express, { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { body, query, param, validationResult } from 'express-validator';
 import { auth } from '../middleware/auth';
+import fs from 'fs';
+import path from 'path';
 
 const router = express.Router();
-const prisma = new PrismaClient();
+
+// 本地存储路径
+const DATA_DIR = path.join(__dirname, '../../data');
+const INQUIRIES_FILE = path.join(DATA_DIR, 'inquiries.json');
+
+// 确保数据目录存在
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// 如果文件不存在，创建空的询价数据文件
+if (!fs.existsSync(INQUIRIES_FILE)) {
+  fs.writeFileSync(INQUIRIES_FILE, JSON.stringify({ inquiries: [] }), 'utf8');
+}
+
+// 定义询价和询价产品的接口
+interface InquiryProduct {
+  id: string;
+  inquiryId: string;
+  name: string;
+  quantity: number;
+  specifications?: string;
+  requirements?: string;
+}
+
+interface Inquiry {
+  id: string;
+  inquiryNumber: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string;
+  company?: string;
+  productName: string;
+  quantity: number;
+  requirements: string;
+  urgency: 'URGENT' | 'NORMAL' | 'FLEXIBLE';
+  status: 'PENDING' | 'PROCESSING' | 'QUOTED' | 'COMPLETED' | 'CANCELLED';
+  quotedPrice?: string;
+  notes?: string;
+  adminReply?: string;
+  repliedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: any; // 索引签名，允许动态访问属性
+}
+
+// 读取询价数据
+function readInquiries(): Inquiry[] {
+  try {
+    const data = fs.readFileSync(INQUIRIES_FILE, 'utf8');
+    return JSON.parse(data).inquiries || [];
+  } catch (error) {
+    console.error('读取询价数据失败:', error);
+    return [];
+  }
+}
+
+// 写入询价数据
+function writeInquiries(inquiries: Inquiry[]) {
+  try {
+    fs.writeFileSync(INQUIRIES_FILE, JSON.stringify({ inquiries }, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    console.error('写入询价数据失败:', error);
+    return false;
+  }
+}
 
 // 生成询价单号
 function generateInquiryNumber(): string {
@@ -14,6 +81,11 @@ function generateInquiryNumber(): string {
   const day = String(now.getDate()).padStart(2, '0');
   const timestamp = now.getTime().toString().slice(-6);
   return `INQ-${year}${month}${day}-${timestamp}`;
+}
+
+// 生成唯一ID
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
 // 获取询价列表 (管理员)
@@ -47,63 +119,52 @@ router.get('/',
       const sortBy = (req.query.sortBy as string) || 'createdAt';
       const sortOrder = (req.query.sortOrder as string) || 'desc';
 
-      const skip = (page - 1) * limit;
-
-      // 构建查询条件
-      const where: any = {};
+      let inquiries = readInquiries();
       
+      // 过滤
       if (status) {
-        where.status = status;
+        inquiries = inquiries.filter((i: Inquiry) => i.status === status);
       }
       
       if (urgency) {
-        where.urgency = urgency;
+        inquiries = inquiries.filter((i: Inquiry) => i.urgency === urgency);
       }
       
       if (search) {
-        where.OR = [
-          { customerName: { contains: search, mode: 'insensitive' } },
-          { company: { contains: search, mode: 'insensitive' } },
-          { productName: { contains: search, mode: 'insensitive' } },
-          { inquiryNumber: { contains: search, mode: 'insensitive' } },
-          { customerPhone: { contains: search } },
-          { customerEmail: { contains: search, mode: 'insensitive' } }
-        ];
+        const searchLower = search.toLowerCase();
+        inquiries = inquiries.filter((i: Inquiry) => 
+          i.customerName?.toLowerCase().includes(searchLower) ||
+          i.company?.toLowerCase().includes(searchLower) ||
+          i.productName?.toLowerCase().includes(searchLower) ||
+          i.inquiryNumber?.toLowerCase().includes(searchLower) ||
+          i.customerPhone?.includes(search) ||
+          i.customerEmail?.toLowerCase().includes(searchLower)
+        );
       }
-
-      // 获取总数
-      const total = await prisma.inquiry.count({ where });
-
-      // 获取询价列表
-      const inquiries = await prisma.inquiry.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { [sortBy]: sortOrder },
-        include: {
-          products: {
-            include: {
-              product: true
-            }
-          }
+      
+      // 排序
+      inquiries.sort((a: Inquiry, b: Inquiry) => {
+        if (sortOrder === 'asc') {
+          return a[sortBy] > b[sortBy] ? 1 : -1;
+        } else {
+          return a[sortBy] < b[sortBy] ? 1 : -1;
         }
       });
+      
+      // 分页
+      const total = inquiries.length;
+      const skip = (page - 1) * limit;
+      inquiries = inquiries.slice(skip, skip + limit);
 
       // 统计数据
-      const stats = await prisma.inquiry.groupBy({
-        by: ['status'],
-        _count: {
-          status: true
-        }
-      });
-
+      const allInquiries = readInquiries();
       const statusStats = {
-        total,
-        pending: stats.find(s => s.status === 'PENDING')?._count.status || 0,
-        processing: stats.find(s => s.status === 'PROCESSING')?._count.status || 0,
-        quoted: stats.find(s => s.status === 'QUOTED')?._count.status || 0,
-        completed: stats.find(s => s.status === 'COMPLETED')?._count.status || 0,
-        cancelled: stats.find(s => s.status === 'CANCELLED')?._count.status || 0
+        total: allInquiries.length,
+        pending: allInquiries.filter((i: Inquiry) => i.status === 'PENDING').length,
+        processing: allInquiries.filter((i: Inquiry) => i.status === 'PROCESSING').length,
+        quoted: allInquiries.filter((i: Inquiry) => i.status === 'QUOTED').length,
+        completed: allInquiries.filter((i: Inquiry) => i.status === 'COMPLETED').length,
+        cancelled: allInquiries.filter((i: Inquiry) => i.status === 'CANCELLED').length
       };
 
       res.json({
@@ -146,16 +207,8 @@ router.get('/:id',
         });
       }
 
-      const inquiry = await prisma.inquiry.findUnique({
-        where: { id: req.params.id },
-        include: {
-          products: {
-            include: {
-              product: true
-            }
-          }
-        }
-      });
+      const inquiries = readInquiries();
+      const inquiry = inquiries.find((i: Inquiry) => i.id === req.params.id);
 
       if (!inquiry) {
         return res.status(404).json({
@@ -182,7 +235,7 @@ router.get('/:id',
 router.post('/',
   [
     body('customerName').notEmpty().withMessage('客户姓名不能为空').isLength({ max: 100 }),
-    body('customerPhone').notEmpty().withMessage('联系电话不能为空').isMobilePhone('zh-CN'),
+    body('customerPhone').notEmpty().withMessage('联系电话不能为空'),
     body('customerEmail').optional().isEmail().withMessage('邮箱格式不正确'),
     body('company').optional().isLength({ max: 200 }),
     body('productName').notEmpty().withMessage('产品名称不能为空').isLength({ max: 200 }),
@@ -214,27 +267,39 @@ router.post('/',
 
       // 生成询价单号
       const inquiryNumber = generateInquiryNumber();
+      const now = new Date();
 
-      const inquiry = await prisma.inquiry.create({
-        data: {
-          inquiryNumber,
-          customerName,
-          customerPhone,
-          customerEmail,
-          company,
-          productName,
-          quantity,
-          requirements,
-          urgency,
-          status: 'PENDING'
-        }
-      });
+      const inquiry: Inquiry = {
+        id: generateId(),
+        inquiryNumber,
+        customerName,
+        customerPhone,
+        customerEmail,
+        company,
+        productName,
+        quantity,
+        requirements,
+        urgency: urgency as 'URGENT' | 'NORMAL' | 'FLEXIBLE',
+        status: 'PENDING' as 'PENDING',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      };
 
-      res.status(201).json({
-        success: true,
-        message: '询价提交成功',
-        data: inquiry
-      });
+      const inquiries = readInquiries();
+      inquiries.push(inquiry);
+      
+      if (writeInquiries(inquiries)) {
+        res.status(201).json({
+          success: true,
+          message: '询价提交成功',
+          data: inquiry
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: '询价提交失败' 
+        });
+      }
     } catch (error: any) {
       console.error('创建询价失败:', error);
       res.status(500).json({ 
@@ -267,44 +332,41 @@ router.patch('/:id/status',
       }
 
       const { status, notes, quotedPrice, adminReply } = req.body;
+      const inquiries = readInquiries();
+      const index = inquiries.findIndex((i: Inquiry) => i.id === req.params.id);
 
-      const updateData: any = {
-        status,
-        updatedAt: new Date()
-      };
-
-      if (notes !== undefined) updateData.notes = notes;
-      if (quotedPrice !== undefined) updateData.quotedPrice = quotedPrice;
-      if (adminReply !== undefined) {
-        updateData.adminReply = adminReply;
-        updateData.repliedAt = new Date();
-      }
-
-      const inquiry = await prisma.inquiry.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: {
-          products: {
-            include: {
-              product: true
-            }
-          }
-        }
-      });
-
-      res.json({
-        success: true,
-        message: '询价状态更新成功',
-        data: inquiry
-      });
-    } catch (error: any) {
-      console.error('更新询价状态失败:', error);
-      if (error.code === 'P2025') {
+      if (index === -1) {
         return res.status(404).json({
           success: false,
           message: '询价记录不存在'
         });
       }
+
+      const inquiry = inquiries[index];
+      inquiry.status = status;
+      inquiry.updatedAt = new Date().toISOString();
+      
+      if (notes !== undefined) inquiry.notes = notes;
+      if (quotedPrice !== undefined) inquiry.quotedPrice = quotedPrice;
+      if (adminReply !== undefined) {
+        inquiry.adminReply = adminReply;
+        inquiry.repliedAt = new Date().toISOString();
+      }
+
+      if (writeInquiries(inquiries)) {
+        res.json({
+          success: true,
+          message: '询价状态更新成功',
+          data: inquiry
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: '更新询价状态失败' 
+        });
+      }
+    } catch (error: any) {
+      console.error('更新询价状态失败:', error);
       res.status(500).json({ 
         success: false, 
         message: '更新询价状态失败' 
@@ -319,7 +381,7 @@ router.put('/:id',
   [
     param('id').isString().notEmpty(),
     body('customerName').notEmpty().withMessage('客户姓名不能为空').isLength({ max: 100 }),
-    body('customerPhone').notEmpty().withMessage('联系电话不能为空').isMobilePhone('zh-CN'),
+    body('customerPhone').notEmpty().withMessage('联系电话不能为空'),
     body('customerEmail').optional().isEmail().withMessage('邮箱格式不正确'),
     body('company').optional().isLength({ max: 200 }),
     body('productName').notEmpty().withMessage('产品名称不能为空').isLength({ max: 200 }),
@@ -355,47 +417,45 @@ router.put('/:id',
         notes
       } = req.body;
 
-      const updateData: any = {
-        customerName,
-        customerPhone,
-        customerEmail,
-        company,
-        productName,
-        quantity,
-        requirements,
-        updatedAt: new Date()
-      };
+      const inquiries = readInquiries();
+      const index = inquiries.findIndex((i: Inquiry) => i.id === req.params.id);
 
-      if (urgency !== undefined) updateData.urgency = urgency;
-      if (status !== undefined) updateData.status = status;
-      if (quotedPrice !== undefined) updateData.quotedPrice = quotedPrice;
-      if (notes !== undefined) updateData.notes = notes;
-
-      const inquiry = await prisma.inquiry.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: {
-          products: {
-            include: {
-              product: true
-            }
-          }
-        }
-      });
-
-      res.json({
-        success: true,
-        message: '询价信息更新成功',
-        data: inquiry
-      });
-    } catch (error: any) {
-      console.error('更新询价信息失败:', error);
-      if (error.code === 'P2025') {
+      if (index === -1) {
         return res.status(404).json({
           success: false,
           message: '询价记录不存在'
         });
       }
+
+      const inquiry = inquiries[index];
+      inquiry.customerName = customerName;
+      inquiry.customerPhone = customerPhone;
+      inquiry.customerEmail = customerEmail;
+      inquiry.company = company;
+      inquiry.productName = productName;
+      inquiry.quantity = quantity;
+      inquiry.requirements = requirements;
+      inquiry.updatedAt = new Date().toISOString();
+
+      if (urgency !== undefined) inquiry.urgency = urgency;
+      if (status !== undefined) inquiry.status = status;
+      if (quotedPrice !== undefined) inquiry.quotedPrice = quotedPrice;
+      if (notes !== undefined) inquiry.notes = notes;
+
+      if (writeInquiries(inquiries)) {
+        res.json({
+          success: true,
+          message: '询价信息更新成功',
+          data: inquiry
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: '更新询价信息失败' 
+        });
+      }
+    } catch (error: any) {
+      console.error('更新询价信息失败:', error);
       res.status(500).json({ 
         success: false, 
         message: '更新询价信息失败' 
@@ -421,22 +481,31 @@ router.delete('/:id',
         });
       }
 
-      await prisma.inquiry.delete({
-        where: { id: req.params.id }
-      });
+      const inquiries = readInquiries();
+      const index = inquiries.findIndex((i: Inquiry) => i.id === req.params.id);
 
-      res.json({
-        success: true,
-        message: '询价记录删除成功'
-      });
-    } catch (error: any) {
-      console.error('删除询价失败:', error);
-      if (error.code === 'P2025') {
+      if (index === -1) {
         return res.status(404).json({
           success: false,
           message: '询价记录不存在'
         });
       }
+
+      inquiries.splice(index, 1);
+
+      if (writeInquiries(inquiries)) {
+        res.json({
+          success: true,
+          message: '询价记录删除成功'
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: '删除询价失败' 
+        });
+      }
+    } catch (error: any) {
+      console.error('删除询价失败:', error);
       res.status(500).json({ 
         success: false, 
         message: '删除询价失败' 
@@ -466,33 +535,43 @@ router.post('/batch',
       }
 
       const { action, ids, status } = req.body;
+      const inquiries = readInquiries();
 
       if (action === 'delete') {
-        await prisma.inquiry.deleteMany({
-          where: {
-            id: { in: ids }
-          }
-        });
-
-        res.json({
-          success: true,
-          message: `成功删除 ${ids.length} 条询价记录`
-        });
+        const newInquiries = inquiries.filter((i: Inquiry) => !ids.includes(i.id));
+        
+        if (writeInquiries(newInquiries)) {
+          res.json({
+            success: true,
+            message: `成功删除 ${ids.length} 条询价记录`
+          });
+        } else {
+          res.status(500).json({ 
+            success: false, 
+            message: '批量删除失败' 
+          });
+        }
       } else if (action === 'updateStatus' && status) {
-        await prisma.inquiry.updateMany({
-          where: {
-            id: { in: ids }
-          },
-          data: {
-            status,
-            updatedAt: new Date()
+        const now = new Date().toISOString();
+        
+        inquiries.forEach((i: Inquiry) => {
+          if (ids.includes(i.id)) {
+            i.status = status;
+            i.updatedAt = now;
           }
         });
-
-        res.json({
-          success: true,
-          message: `成功更新 ${ids.length} 条询价记录状态`
-        });
+        
+        if (writeInquiries(inquiries)) {
+          res.json({
+            success: true,
+            message: `成功更新 ${ids.length} 条询价记录状态`
+          });
+        } else {
+          res.status(500).json({ 
+            success: false, 
+            message: '批量更新状态失败' 
+          });
+        }
       } else {
         res.status(400).json({
           success: false,
@@ -529,27 +608,24 @@ router.get('/export/csv',
       }
 
       const { status, startDate, endDate } = req.query;
-
-      const where: any = {};
+      let inquiries = readInquiries();
       
       if (status) {
-        where.status = status;
+        inquiries = inquiries.filter((i: Inquiry) => i.status === status);
       }
       
       if (startDate || endDate) {
-        where.createdAt = {};
-        if (startDate) where.createdAt.gte = new Date(startDate as string);
-        if (endDate) where.createdAt.lte = new Date(endDate as string);
+        inquiries = inquiries.filter((i: Inquiry) => {
+          const createdAt = new Date(i.createdAt);
+          if (startDate && createdAt < new Date(startDate as string)) return false;
+          if (endDate && createdAt > new Date(endDate as string)) return false;
+          return true;
+        });
       }
-
-      const inquiries = await prisma.inquiry.findMany({
-        where,
-        orderBy: { createdAt: 'desc' }
-      });
 
       // 生成CSV内容
       const csvHeader = '询价单号,客户姓名,联系电话,邮箱,公司,产品名称,数量,需求描述,紧急程度,状态,报价金额,创建时间,更新时间\n';
-      const csvRows = inquiries.map(inquiry => {
+      const csvRows = inquiries.map((inquiry: Inquiry) => {
         return [
           inquiry.inquiryNumber,
           inquiry.customerName,
@@ -562,8 +638,8 @@ router.get('/export/csv',
           inquiry.urgency,
           inquiry.status,
           inquiry.quotedPrice || '',
-          inquiry.createdAt.toISOString(),
-          inquiry.updatedAt.toISOString()
+          inquiry.createdAt,
+          inquiry.updatedAt
         ].join(',');
       }).join('\n');
 

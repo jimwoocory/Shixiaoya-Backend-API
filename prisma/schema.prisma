@@ -56,19 +56,25 @@ model Product {
 
 // 询价表
 model Inquiry {
-  id          Int       @id @default(autoincrement())
-  name        String    @db.VarChar(100)
-  phone       String    @db.VarChar(20)
-  email       String?   @db.VarChar(100)
-  company     String?   @db.VarChar(200)
-  message     String    @db.Text
-  status      InquiryStatus @default(PENDING)
-  adminReply  String?   @db.Text @map("admin_reply")
-  repliedAt   DateTime? @map("replied_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(cuid())
+  inquiryNumber String    @unique @map("inquiry_number") // 询价单号，如 INQ-2024-001
+  customerName  String    @db.VarChar(100) @map("customer_name")
+  customerPhone String    @db.VarChar(20) @map("customer_phone")
+  customerEmail String?   @db.VarChar(100) @map("customer_email")
+  company       String?   @db.VarChar(200)
+  productName   String    @db.VarChar(200) @map("product_name")
+  quantity      Int       @default(1)
+  requirements  String    @db.Text
+  urgency       UrgencyLevel @default(NORMAL)
+  status        InquiryStatus @default(PENDING)
+  quotedPrice   String?   @db.VarChar(50) @map("quoted_price")
+  notes         String?   @db.Text
+  adminReply    String?   @db.Text @map("admin_reply")
+  repliedAt     DateTime? @map("replied_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
   
-  products    InquiryProduct[]
+  products      InquiryProduct[]
   
   @@map("inquiries")
 }
@@ -76,7 +82,7 @@ model Inquiry {
 // 询价产品关联表
 model InquiryProduct {
   id        Int     @id @default(autoincrement())
-  inquiryId Int     @map("inquiry_id")
+  inquiryId String  @map("inquiry_id")
   productId Int     @map("product_id")
   quantity  Int     @default(1)
   
@@ -153,9 +159,17 @@ model Analytics {
 
 // 枚举定义
 enum InquiryStatus {
-  PENDING   // 待处理
-  REPLIED   // 已回复
-  CLOSED    // 已关闭
+  PENDING     // 待处理
+  PROCESSING  // 处理中
+  QUOTED      // 已报价
+  COMPLETED   // 已完成
+  CANCELLED   // 已取消
+}
+
+enum UrgencyLevel {
+  URGENT    // 紧急
+  NORMAL    // 一般
+  FLEXIBLE  // 不急
 }
 
 enum UserRole {
